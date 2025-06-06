@@ -4,9 +4,12 @@ FROM node:18-alpine AS base
 FROM base AS deps
 WORKDIR /app
 
-# Install dependencies with legacy-peer-deps flag to avoid dependency conflicts
+# Copy npmrc file for legacy-peer-deps
+COPY .npmrc ./
+# Copy package files
 COPY package.json package-lock.json* ./
-RUN npm install --legacy-peer-deps
+# Install dependencies with legacy-peer-deps flag to avoid dependency conflicts
+RUN npm ci --legacy-peer-deps || npm install --legacy-peer-deps
 
 # Rebuild the source code only when needed
 FROM base AS builder

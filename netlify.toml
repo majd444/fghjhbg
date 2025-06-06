@@ -1,0 +1,59 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NEXT_TELEMETRY_DISABLED = "1"
+  AGENTIVE_API_KEY = "c8bc40f2-e83d-4e92-ac2b-d5bd6444da0a"
+  AGENTIVE_ASSISTANT_ID = "25fd29f8-8365-4ce2-b3f2-f78e1b57f148"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Auth0 integration plugin
+[[plugins]]
+  package = "@netlify/auth0"
+
+# Protected routes - require authentication
+[[redirects]]
+  from = "/home/*"
+  to = "/home/:splat"
+  status = 200
+  conditions = {Role = ["user"]}
+
+# Public routes
+[[redirects]]
+  from = "/landing"
+  to = "/landing"
+  status = 200
+
+[[redirects]]
+  from = "/auth-sync"
+  to = "/auth-sync"
+  status = 200
+
+# Handle API routes properly
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+# Force HTTPS
+[[redirects]]
+  from = "http://*"
+  to = "https://:splat"
+  status = 301
+  force = true
+
+# Default redirect for authenticated users
+[[redirects]]
+  from = "/"
+  to = "/home"
+  status = 302
+  conditions = {Role = ["user"]}
+
+# Default redirect for unauthenticated users
+[[redirects]]
+  from = "/"
+  to = "/landing"
+  status = 302

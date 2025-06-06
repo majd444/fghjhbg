@@ -1,0 +1,9 @@
+{
+  "name": "auth0-profile-api-tests",
+  "version": "1.0.0",
+  "description": "Test scripts for Auth0 Profile API",
+  "type": "module",
+  "scripts": {
+    "test": "node run-test.js"
+  }
+}

@@ -1,0 +1,58 @@
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  
+  // Public paths that don't require authentication
+  const isPublicPath = 
+    pathname === '/landing' || 
+    pathname === '/' || 
+    pathname === '/auth-sync' || 
+    pathname.startsWith('/auth/') || 
+    pathname.startsWith('/api/auth/') ||
+    pathname.startsWith('/api/account') ||
+    pathname.includes('favicon.ico');
+  
+  // Check for various authentication indicators
+  const accessToken = request.cookies.get('auth0.access_token')?.value;
+  const isAuthenticatedCookie = request.cookies.get('is_authenticated')?.value === 'true';
+  const userIdCookie = request.cookies.get('user_id')?.value;
+  const googleTokenCookie = request.cookies.get('google_default_token')?.value;
+  
+  // User is authenticated if ANY of these auth indicators are present
+  const isAuthenticated = !!accessToken || isAuthenticatedCookie || !!userIdCookie || !!googleTokenCookie;
+  
+  // Get payment status from cookies
+  const hasCompletedPayment = request.cookies.get('payment_completed')?.value === 'true';
+  
+  // If user is not authenticated and trying to access a protected route
+  if (!isAuthenticated && !isPublicPath) {
+    return NextResponse.redirect(new URL('/landing', request.url));
+  }
+  
+  // If user is authenticated but hasn't completed payment and trying to access home
+  if (isAuthenticated && !hasCompletedPayment && pathname === '/home') {
+    return NextResponse.redirect(new URL('/payment', request.url));
+  }
+  
+  // For root path (/), redirect based on auth status
+  if (pathname === '/') {
+    if (isAuthenticated) {
+      if (hasCompletedPayment) {
+        return NextResponse.redirect(new URL('/home', request.url));
+      } else {
+        return NextResponse.redirect(new URL('/payment', request.url));
+      }
+    } else {
+      return NextResponse.redirect(new URL('/landing', request.url));
+    }
+  }
+  
+  return NextResponse.next();
+}
+
+// Match specific paths instead of using complex regex
+export const config = {
+  matcher: ['/', '/home', '/payment', '/landing', '/(dashboard|profile|settings)/:path*']
+};

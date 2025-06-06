@@ -1,0 +1,1509 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { AuthRedirectInterceptor } from "../auth-redirect"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { toast } from "@/components/ui/use-toast"
+import { Input } from "@/components/ui/input"
+
+import { Textarea } from "@/components/ui/textarea"
+import { Slider } from "@/components/ui/slider"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ChatInterface } from "@/components/chat-interface"
+import { Card, CardHeader } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { ColorPalette } from "@/components/ui/color-palette"
+import { RefreshCw, ExternalLink, Plus, Trash2, X } from "lucide-react"
+import { File } from "lucide-react"
+import useIntegrations from "@/hooks/integrations/useIntegrations"
+import { Switch } from "@/components/ui/switch"
+import { UserInfoFieldsConfig } from "@/components/user-info-fields"
+import { IntegrationCard } from "@/components/integration-card"
+import { IntegrationForm } from "@/components/integration-form"
+
+export default function NewAgentPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  
+  // Handle auth parameters if we're returning from authentication
+  useEffect(() => {
+    const auth = searchParams.get('auth')
+    const service = searchParams.get('service')
+    const componentId = searchParams.get('componentId')
+    
+    if (auth === 'success' && service && componentId) {
+      console.log('Successfully authenticated service:', service, 'for component:', componentId)
+      // Set localStorage flag to indicate successful authentication
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`google_${service}_connected`, 'true')
+      }
+    }
+  }, [searchParams])
+  
+  const [activeTab, setActiveTab] = useState("configuration")
+  // State for URL import and file upload functionality
+  const [extractionUrl, setExtractionUrl] = useState("") // URL for content extraction
+  // Enhanced extracted links with more detailed information
+  interface ExtractedLink {
+    url: string;
+    title: string;
+    description: string;
+    content?: string;
+    extractedAt: string;
+  }
+  
+  // Enhanced extracted documents with more detailed information
+  interface ExtractedDocument {
+    filename: string;
+    fileType: string;
+    fileSize: number;
+    content?: string;
+    contentPreview?: string;
+    extractedAt: string;
+  }
+  
+  const [extractedLinks, setExtractedLinks] = useState<ExtractedLink[]>([])
+  const [extractedDocuments, setExtractedDocuments] = useState<ExtractedDocument[]>([])
+  const [selectedLink, setSelectedLink] = useState<ExtractedLink | null>(null)
+  const [selectedDocument, setSelectedDocument] = useState<ExtractedDocument | null>(null)
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([])
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  
+  // Edit mode state
+  const isEditMode = searchParams.get("edit") === "true"
+  const agentId = searchParams.get("agentId")
+  const [isLoading, setIsLoading] = useState(isEditMode)
+  
+  // Integration settings state
+  const {
+    integrations,
+    loading: integrationsLoading,
+    error: integrationsError,
+    saveIntegration,
+    disconnectIntegration
+  } = useIntegrations()
+  const [selectedIntegration, setSelectedIntegration] = useState<any>(null)
+  const [integrationDialogOpen, setIntegrationDialogOpen] = useState(false)
+  const [integrationFormState, setIntegrationFormState] = useState<Record<string, string>>({})
+  const [isSavingIntegration, setIsSavingIntegration] = useState(false)
+  const [isDisconnectingIntegration, setIsDisconnectingIntegration] = useState<string | null>(null)
+
+  // Configuration state
+  const [name, setName] = useState<string>("AI Assistant")
+  const [systemPrompt, setSystemPrompt] = useState<string>("You are a helpful AI assistant.")
+  const [temperature, setTemperature] = useState<number>(70) // 0.7 scaled to 0-100 for slider
+  const [welcomeMessage, setWelcomeMessage] = useState<string>("👋 Hi, I'm an AI Assistant! I can help with information.")
+  
+  // Response speed configuration
+  const [minResponseTime, setMinResponseTime] = useState<number>(1)
+  const [maxResponseTime, setMaxResponseTime] = useState<number>(3)
+  const [useRandomResponseTime, setUseRandomResponseTime] = useState<boolean>(true)
+  
+  // User info collection configuration
+  const [collectUserInfoEnabled, setCollectUserInfoEnabled] = useState(true)
+  const [userInfoFields, setUserInfoFields] = useState<any[]>([])
+  
+  // Chat style configuration
+  const [topColor, setTopColor] = useState<string>("#112937")
+  const [accentColor, setAccentColor] = useState<string>("#3B82FF")
+  const [backgroundColor, setBackgroundColor] = useState<string>("#F3F4F6")
+  const [avatarImage, setAvatarImage] = useState<string | null>(null)
+  const [outsideButtonUrl, setOutsideButtonUrl] = useState("")
+  const [outsideButtonText, setOutsideButtonText] = useState("Chat with our AI assistant!")
+  
+  // Sync color changes with workflow
+  const updateWorkflowColors = async (colors: {topColor?: string, accentColor?: string, backgroundColor?: string}) => {
+    if (!workflowId) return // Only update if we have a workflowId
+    
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...colors,
+          userId: "default-user"
+        }),
+      })
+      
+      if (!response.ok) {
+        console.error('Failed to update workflow colors:', response.status)
+        const errorText = await response.text()
+        console.error('Error details:', errorText)
+      } else {
+        console.log('Workflow colors updated successfully')
+      }
+    } catch (error) {
+      console.error('Error updating workflow colors:', error)
+    }
+  }
+  
+  // Enhanced color setters that also update workflow
+  const handleTopColorChange = (color: string) => {
+    setTopColor(color)
+    updateWorkflowColors({ topColor: color })
+  }
+  
+  const handleAccentColorChange = (color: string) => {
+    setAccentColor(color)
+    updateWorkflowColors({ accentColor: color })
+  }
+  
+  const handleBackgroundColorChange = (color: string) => {
+    setBackgroundColor(color);
+  };
+  
+  // Handle avatar image upload
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Only accept image files
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Invalid file type",
+        description: "Please upload an image file (JPEG, PNG, etc.)",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Read the file as data URL
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setAvatarImage(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+  
+  // Remove the avatar image
+  const removeAvatarImage = () => {
+    setAvatarImage(null);
+  };
+  
+  // File upload state
+  const [fileUploadStatus, setFileUploadStatus] = useState<{uploading: boolean; error: string | null; success?: string | null;}>({ uploading: false, error: null, success: null })
+  
+  // Workflow and conversation starters
+  const [workflowId, setWorkflowId] = useState<string | null>(null)
+  const [_workflowData, setWorkflowData] = useState<any>(null)
+  const [conversationStarters, setConversationStarters] = useState<string[]>([])
+  
+  // Navigate to workflow page after saving temporary state
+  const handleWorkflowClick = async () => {
+    // Create or update the workflow with current values, but don't show it as saved in the UI
+    try {
+      setIsSaving(true) // Show saving indicator
+      
+      // First, create a workflow if none exists
+      let currentWorkflowId = workflowId;
+      if (!currentWorkflowId) {
+        try {
+          // Create a basic workflow first
+          const workflowResponse = await fetch('/api/workflows', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              name: `${name} Workflow`,
+              description: "Auto-created workflow for agent",
+              components: [],
+              connections: [],
+              conversationTexts: {},
+              selectedToolIds: {},
+              userId: "default-user",
+              // Include styling configuration
+              chatbotName: name,
+              systemPrompt: systemPrompt,
+              topColor: topColor,
+              accentColor: accentColor,
+              backgroundColor: backgroundColor,
+              // Fine tuning configuration
+              temperature: temperature / 100,
+              model: "llama-3.1",
+              maxTokens: 2000
+            }),
+          });
+
+          if (!workflowResponse.ok) {
+            throw new Error(`Failed to create workflow: ${workflowResponse.status}`);
+          }
+
+          const workflowResult = await workflowResponse.json();
+          currentWorkflowId = workflowResult.workflowId;
+          setWorkflowId(currentWorkflowId) // Update state with new ID
+          console.log(`Created workflow with ID: ${currentWorkflowId}`);
+        } catch (workflowError) {
+          console.error('Error creating workflow:', workflowError);
+          alert('Failed to create workflow before navigation');
+          setIsSaving(false);
+          return; // Stop navigation if workflow creation fails
+        }
+      } else {
+        // Update existing workflow with all current values
+        try {
+          const updateResponse = await fetch(`/api/workflows/${currentWorkflowId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              name: `${name} Workflow`,
+              description: "Updated workflow for agent",
+              chatbotName: name,
+              systemPrompt: systemPrompt,
+              topColor: topColor,
+              accentColor: accentColor,
+              backgroundColor: backgroundColor,
+              temperature: temperature / 100,
+              model: "llama-3.1",
+              maxTokens: 2000,
+              userId: "default-user"
+            }),
+          });
+          
+          if (!updateResponse.ok) {
+            throw new Error(`Failed to update workflow: ${updateResponse.status}`);
+          }
+          
+          console.log('Workflow updated before navigation');
+        } catch (updateError) {
+          console.error('Error updating workflow:', updateError);
+          alert('Failed to update workflow before navigation');
+          setIsSaving(false);
+          return; // Stop navigation if update fails
+        }
+      }
+      
+      setIsSaving(false) // Hide saving indicator
+      
+      // Navigate to workflow page with the current ID
+      router.push(`/workflow/new?id=${currentWorkflowId}`);
+    } catch (error) {
+      console.error('Error in workflow navigation process:', error);
+      setIsSaving(false);
+      alert('An error occurred. Please try again.');
+    }
+  }
+  
+  // Handle back/cancel - go home
+  const handleCancel = () => {
+    router.push("/")
+  }
+  
+  // Fetch agent data when in edit mode
+  useEffect(() => {
+    // First check if we're in edit mode and have an agent ID
+    if (isEditMode && agentId) {
+      setIsLoading(true)
+      
+      // Try to fetch the agent data
+      fetch(`/api/agents/${agentId}`)
+        .then(response => {
+          if (!response.ok) {
+            // If we get a 404 or 500, we'll skip and just create a new agent
+            if (response.status === 404 || response.status === 500) {
+              console.warn(`Agent with ID ${agentId} not found or API error, creating new agent instead`)
+              return null
+            }
+            throw new Error(`Error fetching agent: ${response.status}`)
+          }
+          return response.json()
+        })
+        .then(data => {
+          if (!data) return // Skip if we didn't get data back
+          
+          // Populate all form fields with agent data
+          if (data.agent) {
+            const agent = data.agent
+            
+            // Basic info
+            setName(agent.chatbotName || agent.name || "AI Assistant")
+            setSystemPrompt(agent.systemPrompt || "You are a helpful AI assistant.")
+            
+            // Set configuration values
+            setTemperature(Math.round((agent.temperature || 0.7) * 100))
+            
+            // Set styles
+            if (agent.topColor) setTopColor(agent.topColor)
+            if (agent.accentColor) setAccentColor(agent.accentColor)
+            if (agent.backgroundColor) setBackgroundColor(agent.backgroundColor)
+            if (agent.outsideButtonText) setOutsideButtonText(agent.outsideButtonText)
+            if (agent.outsideButtonUrl) setOutsideButtonUrl(agent.outsideButtonUrl)
+            
+            // Set workflow ID if available
+            if (agent.workflowId) setWorkflowId(agent.workflowId)
+            
+            // Set conversation starters if available in extraConfig
+            if (agent.extraConfig && agent.extraConfig.conversationStarters) {
+              setConversationStarters(agent.extraConfig.conversationStarters)
+            }
+            
+            // Set training data if available
+            if (agent.extraConfig && agent.extraConfig.trainingData) {
+              if (agent.extraConfig.trainingData.extractedLinks) {
+                setExtractedLinks(agent.extraConfig.trainingData.extractedLinks)
+              }
+              if (agent.extraConfig.trainingData.uploadedFiles) {
+                setUploadedFiles(agent.extraConfig.trainingData.uploadedFiles)
+              }
+            }
+            
+            console.log('Agent data loaded successfully', agent)
+          }
+        })
+        .catch(err => {
+          console.error('Error loading agent:', err)
+        })
+        .finally(() => {
+          setIsLoading(false)
+        })
+    }
+  }, [isEditMode, agentId])
+  
+  // Fetch workflow data if a workflowId is provided
+  useEffect(() => {
+    const workflowIdParam = searchParams.get("workflowId")
+    
+    if (workflowIdParam && !isEditMode) {
+      // Use the string ID directly instead of parsing to number
+      setWorkflowId(workflowIdParam)
+      
+      // Show loading state
+      setIsExtracting(true)
+      
+      // Fetch workflow data
+      fetch(`/api/workflows/${workflowIdParam}`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Error: ${response.status}`)
+          }
+          return response.json()
+        })
+        .then(data => {
+          setWorkflowData(data.workflow)
+          
+          // Extract conversation starters from workflow data
+          if (data.workflow && data.workflow.conversationTexts) {
+            const starters = Object.values(data.workflow.conversationTexts)
+              .filter((text: any) => typeof text === 'string' && text.trim() !== "")
+            
+            setConversationStarters(starters as string[])
+            console.log('Conversation starters loaded:', starters)
+          }
+        })
+        .catch(err => {
+          console.error('Error fetching workflow data:', err)
+        })
+        .finally(() => {
+          setIsExtracting(false)
+        })
+    }
+  }, [searchParams, isEditMode])
+  
+  // Save agent function
+  const saveAgent = async () => {
+    try {
+      setIsSaving(true)
+
+      // First, create a simple workflow if none exists
+      let currentWorkflowId = workflowId;
+      if (!currentWorkflowId) {
+        try {
+          // Create a basic workflow first
+          const workflowResponse = await fetch('/api/workflows', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              name: `${name} Workflow`,
+              description: "Auto-created workflow for agent",
+              components: [],
+              connections: [],
+              conversationTexts: {},
+              selectedToolIds: {},
+              userId: "default-user",
+              // Include styling configuration
+              chatbotName: name,
+              systemPrompt: systemPrompt,
+              topColor: topColor,
+              accentColor: accentColor,
+              backgroundColor: backgroundColor,
+              // Fine tuning configuration
+              temperature: temperature / 100,
+              model: "llama-3.1",
+              maxTokens: 2000
+            }),
+          });
+
+          if (!workflowResponse.ok) {
+            throw new Error(`Failed to create workflow: ${workflowResponse.status}`);
+          }
+
+          const workflowResult = await workflowResponse.json();
+          currentWorkflowId = workflowResult.workflowId;
+          console.log(`Created workflow with ID: ${currentWorkflowId}`);
+        } catch (workflowError) {
+          console.error('Error creating workflow:', workflowError);
+          throw new Error('Failed to create workflow for agent');
+        }
+      }
+      
+      // Collect training data for fine-tuning
+      const trainingData = {
+        extractedLinks: extractedLinks,
+        uploadedFiles: uploadedFiles
+      }
+      
+      // Now prepare the agent data with all tabs, including the workflow
+      const agentData = {
+        // Basic info
+        name: name,
+        description: isEditMode ? "Updated with Chatbot Automation" : "Created with Chatbot Automation",
+        workflowId: currentWorkflowId, // Use the workflow ID we created or already had
+        userId: "default-user",
+        
+        // Configuration tab
+        chatbotName: name,
+        systemPrompt: systemPrompt,
+        temperature: temperature / 100,
+        model: "llama-3.1",
+        maxTokens: 2000,
+        
+        // Style tab
+        topColor: topColor,
+        accentColor: accentColor,
+        backgroundColor: backgroundColor,
+        avatarUrl: "",
+        outsideButtonText: outsideButtonText,
+        outsideButtonUrl: outsideButtonUrl,
+        
+        // Fine-tuning data
+        extraConfig: {
+          conversationStarters: conversationStarters,
+          trainingData: trainingData
+        }
+      }
+
+      console.log(`${isEditMode ? 'Updating' : 'Saving'} agent with data:`, agentData);
+      
+      // Save or update the agent in the database
+      let url = '/api/agents';
+      let method = 'POST';
+      
+      // If we're in edit mode and have an agent ID, use PUT to update
+      if (isEditMode && agentId) {
+        url = `/api/agents/${agentId}`;
+        method = 'PUT';
+      }
+      
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(agentData),
+      })
+      
+      if (!response.ok) {
+        // If we get a 500 or 404 in edit mode, fallback to creating a new agent
+        if (isEditMode && (response.status === 500 || response.status === 404)) {
+          console.warn('Failed to update agent, trying to create a new one instead');
+          
+          // Try to create a new agent instead
+          const createResponse = await fetch('/api/agents', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(agentData),
+          });
+          
+          if (!createResponse.ok) {
+            const errorData = await createResponse.json();
+            throw new Error(`Error ${createResponse.status}: ${errorData.error || 'Failed to create new agent'}`)
+          }
+          
+          // Created successfully with the fallback
+          const _createResult = await createResponse.json();
+        } else {
+          // Regular error handling
+          const errorData = await response.json();
+          console.error('API error details:', errorData);
+          throw new Error(`Error ${response.status}: ${errorData.error || `Failed to ${isEditMode ? 'update' : 'save'} agent`}`)
+        }
+      } else {
+        const _result = await response.json()
+      }
+      
+      // Set success state
+      setSaveSuccess(true)
+      
+      // Redirect to dashboard after a brief delay to show success message
+      setTimeout(() => {
+        router.push("/")
+      }, 1500)
+      
+    } catch (error) {
+      console.error(`Error ${isEditMode ? 'updating' : 'saving'} agent:`, error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Extract links functionality removed
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    
+    setFileUploadStatus({ uploading: true, error: null })
+    
+    try {
+      // Process each file and extract its content
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        // Create form data for the API request
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // Call our document extraction API
+        const response = await fetch('/api/extract-document', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (!response.ok) {
+          // Try to get error details if available
+          try {
+            const errorText = await response.text();
+            // Check if the response is JSON
+            try {
+              const errorData = JSON.parse(errorText);
+              throw new Error(errorData.error || `Error processing ${file.name}`);
+            } catch (jsonParseError) {
+              // Log the parse error for debugging
+              console.debug('Failed to parse error response as JSON:', jsonParseError instanceof Error ? jsonParseError.message : 'Unknown error');
+              
+              // If it's not JSON (e.g., HTML error page), provide a cleaner error
+              if (errorText.includes('<!DOCTYPE html>')) {
+                throw new Error(`Server error (${response.status}). The server returned an HTML page instead of JSON.`);
+              } else {
+                throw new Error(`Error processing ${file.name}: ${response.status}`);
+              }
+            }
+          } catch (textError) {
+            console.error('Error reading response text:', textError instanceof Error ? textError.message : 'Unknown error');
+            throw new Error(`Error processing ${file.name}: ${response.status}`);
+          }
+        }
+        
+        // Safely parse JSON response
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error('Failed to parse JSON response:', jsonError);
+          throw new Error(`Invalid response when processing ${file.name}. Please try again.`);  
+        }
+        
+        if (data.success) {
+          // Add to uploaded files list
+          setUploadedFiles(prev => [...prev, file.name]);
+          
+          // Add to extracted documents with full details
+          const newDocument: ExtractedDocument = {
+            filename: data.filename,
+            fileType: data.fileType,
+            fileSize: data.fileSize,
+            content: data.content,
+            contentPreview: data.contentPreview,
+            extractedAt: data.extractedAt
+          };
+          
+          setExtractedDocuments(prev => [...prev, newDocument]);
+        }
+      }
+      
+      // Show success message
+      setFileUploadStatus({
+        uploading: false,
+        error: null,
+        success: `Successfully extracted content from ${files.length} file(s)`
+      });
+      
+    } catch (error) {
+      console.error('Error uploading files:', error)
+      setFileUploadStatus({ 
+        uploading: false, 
+        error: error instanceof Error ? error.message : 'Failed to extract document content. Please try again.'
+      })
+    }
+  }
+
+  const removeFile = (index: number) => {
+    const newFiles = [...uploadedFiles]
+    newFiles.splice(index, 1)
+    setUploadedFiles(newFiles)
+  }
+
+  // removeLink function removed as Extract Links section has been removed
+  
+  return (
+    <div className="container mx-auto py-8 max-w-7xl">
+      {/* Add auth redirect interceptor to handle workflow authentication redirects */}
+      <AuthRedirectInterceptor />
+      {isLoading && (
+        <div className="flex justify-center items-center h-32">
+          <div className="flex flex-col items-center gap-2">
+            <RefreshCw className="h-8 w-8 animate-spin text-blue-500" />
+            <p className="text-sm text-gray-500">Loading agent data...</p>
+          </div>
+        </div>
+      )}
+      
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-3xl font-bold">{isEditMode ? 'Edit Agent' : 'Create New Agent'}</h1>
+        <div className="flex items-center space-x-3">
+          <Button variant="outline" className="flex items-center" onClick={handleWorkflowClick}>
+            <ExternalLink className="h-4 w-4 mr-2" />
+            Workflow
+          </Button>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid grid-cols-4 mb-6">
+              <TabsTrigger value="configuration">Configuration</TabsTrigger>
+              <TabsTrigger value="fine-tuning">Fine-tuning</TabsTrigger>
+              <TabsTrigger value="style">Style</TabsTrigger>
+              <TabsTrigger value="plugins">Plugins</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="configuration" className="space-y-6">
+              <div>
+                <label htmlFor="agent-name" className="block text-sm font-medium mb-2">Name</label>
+                <Input 
+                  id="agent-name"
+                  name="agent-name"
+                  placeholder="AI Assistant" 
+                  value={name} 
+                  onChange={(e) => setName(e.target.value)} 
+                />
+              </div>
+
+              <div>
+                <label htmlFor="language-model" className="block text-sm font-medium mb-2">Language Model</label>
+                <div className="relative">
+                  <Select defaultValue="llama-3.1" name="language-model">
+                    <SelectTrigger 
+                      id="language-model"
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      aria-label="Select language model"
+                    >
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="llama-3.1" id="model-llama">Llama 3.1 Nemetron Nano 8B (Free)</SelectItem>
+                      <SelectItem value="gpt-4" id="model-gpt4">GPT-4</SelectItem>
+                      <SelectItem value="gpt-3.5-turbo" id="model-gpt35">GPT-3.5 Turbo</SelectItem>
+                      <SelectItem value="claude-3-opus" id="model-claude-opus">Claude 3 Opus</SelectItem>
+                      <SelectItem value="claude-3-sonnet" id="model-claude-sonnet">Claude 3 Sonnet</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between mb-2">
+                  <label htmlFor="temperature-slider" className="block text-sm font-medium">Temperature: {(temperature / 100).toFixed(1)}</label>
+                  <span className="text-sm text-gray-500">Balanced</span>
+                </div>
+                <Slider 
+                  id="temperature-slider"
+                  name="temperature"
+                  value={[temperature]} 
+                  max={100} 
+                  step={1} 
+                  onValueChange={(value) => setTemperature(value[0])}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={temperature}
+                  aria-valuetext={`Temperature ${(temperature / 100).toFixed(1)}`}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="system-prompt" className="block text-sm font-medium mb-2">System Prompt</label>
+                <Textarea 
+                  id="system-prompt"
+                  name="system-prompt"
+                  placeholder="You are a helpful AI assistant." 
+                  className="min-h-[150px]" 
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This prompt defines your assistant's personality and capabilities.
+                </p>
+              </div>
+
+              <Separator className="my-4" />
+              
+              {/* Welcome Message */}
+              <div>
+                <label htmlFor="welcome-message" className="block text-sm font-medium mb-2">Welcome Message</label>
+                <Textarea 
+                  id="welcome-message"
+                  name="welcome-message"
+                  placeholder="Hi, I'm an AI Assistant! How can I help you today?" 
+                  className="min-h-[80px]" 
+                  value={welcomeMessage}
+                  onChange={(e) => setWelcomeMessage(e.target.value)}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This is the first message users will see when they start a chat.
+                </p>
+              </div>
+
+              {/* Response Speed Configuration */}
+              <div className="space-y-4 mt-6">
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Response Speed</h3>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Switch 
+                      id="random-response-time" 
+                      checked={useRandomResponseTime}
+                      onCheckedChange={setUseRandomResponseTime}
+                    />
+                    <label htmlFor="random-response-time" className="text-sm cursor-pointer">
+                      Use random response time
+                    </label>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="min-response-time" className="block text-sm mb-1">
+                      Minimum Response Time (seconds)
+                    </label>
+                    <Input
+                      id="min-response-time"
+                      type="number"
+                      min="0"
+                      max="9999999"
+                      step="0.1"
+                      value={minResponseTime.toString()}
+                      onChange={(e) => {
+                        // Allow direct input of any valid number
+                        const value = e.target.value === '' ? '' : parseFloat(e.target.value);
+                        setMinResponseTime(value === '' ? 0 : Math.max(0, Math.min(9999999, value || 0)));
+                      }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label htmlFor="max-response-time" className="block text-sm mb-1">
+                      Maximum Response Time (seconds)
+                    </label>
+                    <Input
+                      id="max-response-time"
+                      type="number"
+                      min="0"
+                      max="9999999"
+                      step="0.1"
+                      value={maxResponseTime.toString()}
+                      onChange={(e) => {
+                        // Allow direct input of any valid number
+                        const value = e.target.value === '' ? '' : parseFloat(e.target.value);
+                        setMaxResponseTime(value === '' ? 0 : Math.max(minResponseTime, Math.min(9999999, value || 0)));
+                      }}
+                      disabled={!useRandomResponseTime}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Controls how quickly the chatbot responds. Enter a specific time in seconds.
+                </p>
+              </div>
+
+              {/* User Info Collection */}
+              <div className="space-y-4 mb-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <h3 className="text-base font-medium">Collect User Information</h3>
+                    <p className="text-sm text-gray-500">Enable a form to collect user info before chat</p>
+                  </div>
+                  <Switch
+                    checked={collectUserInfoEnabled}
+                    onCheckedChange={setCollectUserInfoEnabled}
+                  />
+                </div>
+              </div>
+                
+              {collectUserInfoEnabled && (
+                <div className="space-y-4 border rounded-md p-4 mt-2">
+                  <UserInfoFieldsConfig 
+                    fields={userInfoFields}
+                    onChange={setUserInfoFields}
+                  />
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="fine-tuning" className="space-y-6">
+              <div className="grid grid-cols-1 gap-6">
+                {/* File Upload Section */}
+                <Card>
+                  <CardHeader>
+                    <Tabs defaultValue="file-upload" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="url-import" className="text-sm">URL Import</TabsTrigger>
+                        <TabsTrigger value="file-upload" className="text-sm">File Upload</TabsTrigger>
+                      </TabsList>
+                    
+                      <TabsContent value="url-import" className="mt-4">
+                        {/* URL Import content with cheerio extraction on the backend */}
+                        <div className="space-y-4">
+                          <div className="flex space-x-2">
+                            <div className="flex-1">
+                              <label htmlFor="extract-url" className="sr-only">Enter URL to extract content</label>
+                              <Input
+                                id="extract-url"
+                                name="extract-url"
+                                placeholder="Enter URL to extract content"
+                                value={extractionUrl}
+                                onChange={(e) => setExtractionUrl(e.target.value)}
+                                aria-label="URL for content import"
+                              />
+                            </div>
+                            <Button
+                              onClick={async () => {
+                                if (!extractionUrl) return;
+                                
+                                setIsExtracting(true);
+                                setFileUploadStatus({ uploading: false, error: null });
+                                
+                                try {
+                                  const response = await fetch('/api/extract-links', {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({ url: extractionUrl }),
+                                  });
+                                  
+                                  if (!response.ok) {
+                                    throw new Error(`Error: ${response.status}`);
+                                  }
+                                  
+                                  const data = await response.json();
+                                  if (data?.success) {
+                                    // Add the URL as an uploaded file
+                                    setUploadedFiles(prev => [
+                                      ...prev, 
+                                      `${data.title || 'Extracted content'} (${extractionUrl})`
+                                    ]);
+                                    
+                                    // Add to extracted links with full details
+                                    const newLink: ExtractedLink = {
+                                      url: data.url,
+                                      title: data.title || 'Untitled',
+                                      description: data.description || 'No description available',
+                                      content: data.content,
+                                      extractedAt: data.extractedAt
+                                    };
+                                    
+                                    setExtractedLinks(prev => [...prev, newLink]);
+                                    
+                                    // Clear input after successful extraction
+                                    setExtractionUrl('');
+                                    
+                                    // Show success message
+                                    setFileUploadStatus({
+                                      uploading: false,
+                                      error: null,
+                                      success: `Successfully extracted content from ${extractionUrl}`
+                                    });
+                                  } else {
+                                    throw new Error('No content could be extracted');
+                                  }
+                                } catch (error) {
+                                  console.error('Error importing URL content:', error);
+                                  setFileUploadStatus({ 
+                                    uploading: false, 
+                                    error: 'Failed to extract content. Please check the URL and try again.'
+                                  });
+                                } finally {
+                                  setIsExtracting(false);
+                                }
+                              }}
+                              disabled={isExtracting || !extractionUrl}
+                              className="whitespace-nowrap"
+                              type="button"
+                            >
+                              {isExtracting ? (
+                                <>
+                                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                  Extracting...
+                                </>
+                              ) : (
+                                "Extract"
+                              )}
+                            </Button>
+                          </div>
+                          
+                          {fileUploadStatus.error && (
+                            <div className="bg-red-50 text-red-700 p-2 rounded text-sm">
+                              {fileUploadStatus.error}
+                            </div>
+                          )}
+                          
+                          {fileUploadStatus.success && (
+                            <div className="bg-green-50 text-green-700 p-2 rounded text-sm">
+                              {fileUploadStatus.success}
+                            </div>
+                          )}
+                          
+                          <div className="mt-4">
+                            <h4 className="text-sm font-medium mb-2">Imported URLs</h4>
+                            <div className="p-4 border border-dashed rounded-lg text-center text-gray-500 text-sm">
+                              No URLs imported yet
+                            </div>
+                          </div>
+                        </div>
+                      </TabsContent>
+                    
+                      <TabsContent value="file-upload" className="mt-4 space-y-4">
+                        <div>
+                          <h4 className="text-sm font-medium mb-3">Upload File</h4>
+                          <div className="flex items-center">
+                            <label htmlFor="file-upload" className="cursor-pointer">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="mr-3" 
+                                type="button" 
+                                onClick={() => document.getElementById("file-upload")?.click()}
+                              >
+                                Choose File
+                              </Button>
+                            </label>
+                            <span className="text-sm text-gray-500">
+                              {uploadedFiles.length > 0 ? `${uploadedFiles.length} file(s) selected` : "no file selected"}
+                            </span>
+                            <input 
+                              type="file" 
+                              id="file-upload" 
+                              name="file-upload"
+                              className="hidden" 
+                              multiple 
+                              onChange={handleFileUpload} 
+                              aria-label="Upload files"
+                            />
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2">
+                            Supported formats: PDF, DOCX, TXT, MD, CSV, JSON (Max 10MB)
+                          </p>
+                        </div>
+                      
+                        {fileUploadStatus.uploading && (
+                          <div className="bg-blue-50 text-blue-700 p-2 rounded text-sm flex items-center">
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                            Uploading files...
+                          </div>
+                        )}
+                        
+                        {fileUploadStatus.error && (
+                          <div className="bg-red-50 text-red-700 p-2 rounded text-sm">
+                            {fileUploadStatus.error}
+                          </div>
+                        )}
+
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-sm font-medium">Uploaded Documents</h4>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="p-1 h-auto" 
+                              aria-label="Refresh document list"
+                            >
+                              <RefreshCw className="h-4 w-4 text-gray-500" />
+                            </Button>
+                          </div>
+                          {uploadedFiles.length > 0 ? (
+                            <div className="space-y-2 max-h-40 overflow-y-auto border rounded-md p-2">
+                              {uploadedFiles.map((file, index) => (
+                                <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded-md">
+                                  <div className="flex items-center text-sm truncate">
+                                    <File className="h-4 w-4 mr-2 text-gray-500 flex-shrink-0" />
+                                    <span className="truncate">{file}</span>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removeFile(index)}
+                                    className="ml-2 flex-shrink-0 p-1 h-auto"
+                                  >
+                                    <Trash2 className="h-4 w-4 text-gray-500" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-6 text-gray-500 text-sm border rounded-md">
+                              No documents uploaded yet
+                            </div>
+                          )}
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+                  </CardHeader>
+                </Card>
+              </div>
+
+              <Separator className="my-6" />
+
+              <div>
+                <h3 className="text-lg font-medium mb-4">Training Data Summary</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 p-4 rounded-lg cursor-pointer" onClick={() => setSelectedLink(extractedLinks[0] || null)}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">Links</span>
+                      <Badge>{extractedLinks.length}</Badge>
+                    </div>
+                    <div className="text-2xl font-bold">{extractedLinks.length}</div>
+                    <div className="text-sm text-gray-500">Web pages for training</div>
+                    {extractedLinks.length > 0 && (
+                      <div className="mt-2 text-xs text-blue-500 hover:underline">
+                        Click to view extracted content
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg cursor-pointer" onClick={() => setSelectedDocument(extractedDocuments[0] || null)}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">Files</span>
+                      <Badge>{extractedDocuments.length}</Badge>
+                    </div>
+                    <div className="text-2xl font-bold">{extractedDocuments.length}</div>
+                    <div className="text-sm text-gray-500">Documents for training</div>
+                    {extractedDocuments.length > 0 && (
+                      <div className="mt-2 text-xs text-blue-500 hover:underline">
+                        Click to view extracted content
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Modal to display extracted link content */}
+                {selectedLink && (
+                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setSelectedLink(null)}>
+                    <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between p-4 border-b">
+                        <h2 className="text-xl font-bold truncate">{selectedLink.title}</h2>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => setSelectedLink(null)}
+                          className="rounded-full"
+                        >
+                          <X className="h-5 w-5" />
+                        </Button>
+                      </div>
+                      
+                      <div className="flex-1 overflow-auto p-4">
+                        <div className="mb-4">
+                          <h3 className="text-sm font-medium text-gray-500 mb-1">Source URL</h3>
+                          <a href={selectedLink.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
+                            {selectedLink.url}
+                          </a>
+                        </div>
+                        
+                        <div className="mb-4">
+                          <h3 className="text-sm font-medium text-gray-500 mb-1">Description</h3>
+                          <p className="text-gray-700">{selectedLink.description || 'No description available'}</p>
+                        </div>
+                        
+                        <div className="mb-4">
+                          <h3 className="text-sm font-medium text-gray-500 mb-1">Extracted At</h3>
+                          <p className="text-gray-700">{new Date(selectedLink.extractedAt).toLocaleString()}</p>
+                        </div>
+                        
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-500 mb-1">Content</h3>
+                          <div className="bg-gray-50 p-4 rounded-lg max-h-[300px] overflow-auto text-sm">
+                            {selectedLink.content || 'No content available'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Modal to display extracted document content */}
+                {selectedDocument && (
+                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setSelectedDocument(null)}>
+                    <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between p-4 border-b">
+                        <h2 className="text-xl font-bold truncate">{selectedDocument.filename}</h2>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => setSelectedDocument(null)}
+                          className="rounded-full"
+                        >
+                          <X className="h-5 w-5" />
+                        </Button>
+                      </div>
+                      
+                      <div className="flex-1 overflow-auto p-4">
+                        <div className="mb-4">
+                          <h3 className="text-sm font-medium text-gray-500 mb-1">File Details</h3>
+                          <div className="flex flex-wrap gap-4">
+                            <div>
+                              <span className="text-xs text-gray-500">Type:</span>
+                              <span className="text-sm ml-1 font-medium">{selectedDocument.fileType}</span>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-500">Size:</span>
+                              <span className="text-sm ml-1 font-medium">{Math.round(selectedDocument.fileSize / 1024)} KB</span>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-500">Extracted:</span>
+                              <span className="text-sm ml-1 font-medium">{new Date(selectedDocument.extractedAt).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-500 mb-1">Extracted Content</h3>
+                          <div className="bg-gray-50 p-4 rounded-lg max-h-[400px] overflow-auto text-sm font-mono whitespace-pre-wrap">
+                            {selectedDocument.content || 'No content available'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="mt-6">
+                  <Button className="w-full" disabled={extractedLinks.length === 0 && uploadedFiles.length === 0}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Training Data to Agent
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="style" className="space-y-6">
+              <div className="bg-white p-6 rounded-lg shadow-sm border">
+                <div className="mb-6">
+                  <h2 className="text-lg font-medium mb-2">Style Settings</h2>
+                  <p className="text-sm text-gray-500">
+                    Customize the appearance of your chatbot to match your brand or website design.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <label className="block text-sm font-medium mb-2">Agent Avatar</label>
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0">
+                    {avatarImage ? (
+                      <div className="relative h-16 w-16 rounded-full overflow-hidden border border-gray-200">
+                        <img 
+                          src={avatarImage} 
+                          alt="Agent avatar" 
+                          className="h-full w-full object-cover"
+                        />
+                        <button
+                          onClick={removeAvatarImage}
+                          className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 shadow-sm"
+                          type="button"
+                          aria-label="Remove avatar image"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center">
+                        <span className="text-gray-900 text-xl font-medium">{name.charAt(0)}</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex-1">
+                    <label htmlFor="avatar-upload" className="cursor-pointer">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mr-3" 
+                        type="button" 
+                        onClick={() => document.getElementById("avatar-upload")?.click()}
+                      >
+                        Upload Image
+                      </Button>
+                    </label>
+                    <input 
+                      type="file" 
+                      id="avatar-upload" 
+                      name="avatar-upload"
+                      className="hidden" 
+                      accept="image/*"
+                      onChange={handleAvatarUpload} 
+                      aria-label="Upload avatar image"
+                    />
+                    <p className="text-xs text-gray-500 mt-2">
+                      Upload an image for your agent's avatar. This will replace the default letter avatar.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-6">
+                <div>
+                  <label id="top-color-label" className="block text-sm font-medium mb-2">Top Color</label>
+                  <ColorPalette
+                    aria-labelledby="top-color-label"
+                    value={topColor}
+                    onValueChange={handleTopColorChange}
+                    label="#FFFFFF"
+                    aria-label="Header color value"
+                  />
+                </div>
+
+                <div>
+                  <label id="accent-color-label" className="block text-sm font-medium mb-2">Accent Color</label>
+                  <ColorPalette
+                    aria-labelledby="accent-color-label"
+                    value={accentColor}
+                    onValueChange={handleAccentColorChange}
+                    label="#FFFFFF"
+                    aria-label="Accent color value"
+                  />
+                </div>
+
+                <div>
+                  <label id="background-color-label" className="block text-sm font-medium mb-2">Background Color</label>
+                  <ColorPalette
+                    aria-labelledby="background-color-label"
+                    value={backgroundColor}
+                    onValueChange={handleBackgroundColorChange}
+                    label="#FFFFFF"
+                    aria-label="Background color value"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <div className="mb-2">
+                  <label htmlFor="outside-button-text" className="block text-sm font-medium">Outside Button Text</label>
+                  <Input
+                    id="outside-button-text"
+                    name="outside-button-text"
+                    placeholder="Button text"
+                    value={outsideButtonText}
+                    onChange={(e) => setOutsideButtonText(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="outside-button-url" className="block text-sm font-medium mb-2">Outside Button URL</label>
+                  <Input
+                    id="outside-button-url"
+                    name="outside-button-url"
+                    placeholder="Button URL (optional)"
+                    value={outsideButtonUrl}
+                    onChange={(e) => setOutsideButtonUrl(e.target.value)}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="plugins" className="space-y-6">
+              <div className="bg-white p-6 rounded-lg shadow-sm border">
+                <div className="mb-6">
+                  <h2 className="text-lg font-medium mb-2">Integration Settings</h2>
+                  <p className="text-sm text-gray-500">
+                    Connect your chatbot to these platforms for seamless integration.
+                  </p>
+                </div>
+
+                {integrationsLoading ? (
+                  <div className="flex items-center justify-center p-6">
+                    <RefreshCw className="h-5 w-5 animate-spin mr-2" />
+                    <span>Loading integrations...</span>
+                  </div>
+                ) : integrationsError ? (
+                  <div className="p-6 border rounded-lg bg-red-50">
+                    <h3 className="text-lg font-medium text-red-800 mb-2">Unable to load integrations</h3>
+                    <p className="text-red-700">{integrationsError}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {integrations.map(integration => (
+                        <IntegrationCard
+                          key={integration.id}
+                          id={integration.id}
+                          name={integration.name}
+                          description={integration.description}
+                          initialLetter={integration.initialLetter}
+                          color={integration.color}
+                          isConnected={integration.isConnected}
+                          isDisconnecting={isDisconnectingIntegration === integration.id}
+                          agentId={agentId || ''}
+                          agentName={name}
+                          accentColor={accentColor}
+                          backgroundColor={backgroundColor}
+                          welcomeMessage={welcomeMessage}
+                          onConnect={() => {
+                            if (integration.id === 'html-css') {
+                              // For HTML & CSS plugin, we just mark it as connected
+                              // The dialog is handled by the HtmlCssPlugin component
+                              saveIntegration(integration.id, { connected: 'true' });
+                            } else {
+                              setSelectedIntegration(integration);
+                              setIntegrationDialogOpen(true);
+                              setIntegrationFormState(integration.credentials || {});
+                            }
+                          }}
+                          onDisconnect={integration.isConnected ? () => {
+                            setIsDisconnectingIntegration(integration.id);
+                            disconnectIntegration(integration.id).finally(() => {
+                              setIsDisconnectingIntegration(null);
+                              toast({
+                                title: `${integration.name} disconnected`,
+                                description: `Your chatbot is no longer connected to ${integration.name}.`,
+                              });
+                            });
+                          } : undefined}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-4 text-center">
+                      <p className="text-sm text-gray-500">More integrations coming soon!</p>
+                    </div>
+                  </>
+                )}
+                
+                <Dialog open={integrationDialogOpen} onOpenChange={setIntegrationDialogOpen}>
+                  <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                      <DialogTitle>
+                        {selectedIntegration?.isConnected ? 'Update' : 'Connect'} {selectedIntegration?.name}
+                      </DialogTitle>
+                      <DialogDescription>
+                        Enter your {selectedIntegration?.name} credentials to connect your chatbot.
+                      </DialogDescription>
+                    </DialogHeader>
+                    
+                    {selectedIntegration && (
+                      <IntegrationForm
+                        integrationId={selectedIntegration.id}
+                        integrationName={selectedIntegration.name}
+                        setupGuideUrl={selectedIntegration.setupGuideUrl}
+                        formState={integrationFormState}
+                        onFormChange={setIntegrationFormState}
+                        onSubmit={() => {
+                          if (!selectedIntegration) return;
+                          
+                          setIsSavingIntegration(true);
+                          saveIntegration(selectedIntegration.id, integrationFormState)
+                            .then((success) => {
+                              if (success) {
+                                setIntegrationDialogOpen(false);
+                                toast({
+                                  title: "Integration saved",
+                                  description: `${selectedIntegration.name} has been ${selectedIntegration.isConnected ? 'updated' : 'connected'} successfully.`,
+                                });
+                              }
+                            })
+                            .finally(() => {
+                              setIsSavingIntegration(false);
+                            });
+                        }}
+                        isSubmitting={isSavingIntegration}
+                      />
+                    )}
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </TabsContent>
+          </Tabs>
+          
+          {saveSuccess && (
+            <Alert className="mt-6 bg-green-50 border-green-200 text-green-800">
+              <AlertDescription className="flex items-center">
+                <span className="mr-2">✅</span>
+                <div>
+                  <p className="font-medium">Agent Saved Successfully</p>
+                  <p>
+                    Your agent has been saved and is now available in your agents list and active agents.
+                  </p>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          <div className="flex justify-end space-x-3">
+            <Button variant="outline" onClick={handleCancel}>
+              Cancel
+            </Button>
+            <Button onClick={saveAgent} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : "Save Agent"}
+            </Button>
+          </div>
+        </div>
+        
+        {/* Chat Preview */}
+        <div className="bg-gray-50 rounded-lg shadow-sm overflow-hidden min-h-[600px] flex flex-col">
+          <div className="bg-gray-100 p-4 text-center font-medium">
+            Chat Preview
+          </div>
+          <div className="flex-1 p-4">
+            <div className="bg-white rounded-lg shadow-md overflow-hidden h-full">
+              <ChatInterface
+                name={name}
+                systemPrompt={systemPrompt}
+                topColor={topColor}
+                accentColor={accentColor}
+                backgroundColor={backgroundColor}
+                conversationStarters={conversationStarters}
+                welcomeMessage={welcomeMessage}
+                responseSpeed={{
+                  min: Number(minResponseTime),
+                  max: Number(maxResponseTime),
+                  useRandom: useRandomResponseTime
+                }}
+                collectUserInfo={{
+                  enabled: collectUserInfoEnabled,
+                  fields: userInfoFields
+                }}
+                avatarImage={avatarImage}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,52 +1,32 @@
-FROM node:18-alpine AS base
+FROM node:18-alpine
 
-# Install dependencies only when needed
-FROM base AS deps
 WORKDIR /app
-
-# Copy npmrc file for legacy-peer-deps
-COPY .npmrc ./
-# Copy package files
-COPY package.json package-lock.json* ./
-# Install dependencies with legacy-peer-deps flag to avoid dependency conflicts
-RUN npm ci --legacy-peer-deps || npm install --legacy-peer-deps
-
-# Rebuild the source code only when needed
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-
-# Next.js collects anonymous telemetry data about general usage.
-# Learn more here: https://nextjs.org/telemetry
-ENV NEXT_TELEMETRY_DISABLED 1
-
-# Build the backend application
-RUN npm run build
-
-# Production image, copy all the files and run the server
-FROM base AS runner
-WORKDIR /app
-
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
 
 # Create data directory for SQLite database
 RUN mkdir -p /app/data && chmod 777 /app/data
 
-# Copy necessary files
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+# Copy .npmrc for legacy-peer-deps
+COPY .npmrc ./
 
-# Set the correct permissions
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-RUN chown -R nextjs:nodejs /app
-USER nextjs
+# Copy package files first for better layer caching
+COPY package.json package-lock.json* ./
+
+# Install dependencies using npm install instead of npm ci
+RUN npm install --no-audit --legacy-peer-deps
+
+# Copy the rest of the application
+COPY . .
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+
+# Build the application
+RUN npm run build
 
 # Expose the port
 EXPOSE 3000
 
-# Set the command to run the server
+# Start the server
 CMD ["node", "server.js"]

@@ -4,3 +4,4 @@ engine-strict=false
 package-lock=false
 ci=false
 install-strategy=shallow
+prefer-offline=true

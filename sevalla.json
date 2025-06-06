@@ -2,7 +2,7 @@
   "name": "saas-chatbot-backend",
   "type": "application",
   "framework": "nextjs",
-  "buildCommand": "npm install --legacy-peer-deps && npm run build",
+  "buildCommand": "./build.sh",
   "startCommand": "node server.js",
   "port": 3000,
   "env": {

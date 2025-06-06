@@ -12,7 +12,8 @@
     "db-init": "ts-node scripts/init-db.ts",
     "check-env": "node scripts/check-env.js",
     "predeploy": "npm run check-env && npm run db-init",
-    "github-init": "node scripts/init-github.js"
+    "github-init": "node scripts/init-github.js",
+    "preinstall": "echo 'Using npm install instead of npm ci' && npm config set legacy-peer-deps true"
   },
   "dependencies": {
     "@ai-sdk/openai": "latest",

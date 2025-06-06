@@ -1,0 +1,2 @@
+# Ignore default npm ci behavior
+package-lock.json

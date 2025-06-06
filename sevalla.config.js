@@ -1,7 +1,7 @@
 /**
  * Sevalla deployment configuration
  */
-export default {
+module.exports = {
   name: 'saas-chatbot-backend',
   type: 'node',
   entrypoint: 'server.js',

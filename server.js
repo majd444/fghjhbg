@@ -1,13 +1,9 @@
 // server.js - Custom server for Next.js backend
-import { createServer } from 'http';
-import { parse } from 'url';
-import next from 'next';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// Get directory name in ES modules
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const { createServer } = require('http');
+const { parse } = require('url');
+const next = require('next');
+const fs = require('fs');
+const path = require('path');
 
 // Create data directory for SQLite if it doesn't exist
 const dataDir = path.join(__dirname, 'data');

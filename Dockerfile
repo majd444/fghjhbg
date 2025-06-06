@@ -5,14 +5,14 @@ WORKDIR /app
 # Create data directory for SQLite database
 RUN mkdir -p /app/data && chmod 777 /app/data
 
-# Copy .npmrc for legacy-peer-deps
-COPY .npmrc ./
-
 # Copy package files first for better layer caching
 COPY package.json package-lock.json* ./
 
-# Install dependencies using npm install instead of npm ci
-RUN npm install --no-audit --legacy-peer-deps
+# Copy .npmrc for legacy-peer-deps
+COPY .npmrc ./
+
+# Install dependencies with legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
 # Copy the rest of the application
 COPY . .

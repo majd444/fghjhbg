@@ -1,0 +1,23 @@
+{
+  "name": "saas-chatbot-backend",
+  "type": "application",
+  "framework": "nextjs",
+  "buildCommand": "npm install --legacy-peer-deps && npm run build",
+  "startCommand": "node server.js",
+  "port": 3000,
+  "env": {
+    "NODE_ENV": "production",
+    "NEXT_TELEMETRY_DISABLED": "1"
+  },
+  "volumes": [
+    {
+      "name": "data",
+      "mountPath": "/app/data"
+    }
+  ],
+  "healthCheck": {
+    "path": "/api/health",
+    "initialDelaySeconds": 10,
+    "periodSeconds": 30
+  }
+}

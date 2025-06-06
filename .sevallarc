@@ -1,9 +1,0 @@
-{
-  "build": {
-    "useDockerfile": true
-  },
-  "deploy": {
-    "type": "application",
-    "port": 3000
-  }
-}

@@ -16,6 +16,14 @@ const nextConfig = {
       },
     ]
   },
+  // Configure for backend deployment
+  output: 'standalone',
+  // Disable image optimization for backend-only deployment
+  images: {
+    unoptimized: true
+  },
+  // Disable static exports
+  trailingSlash: false,
 }
 
 export default nextConfig;

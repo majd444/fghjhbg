@@ -1,14 +1,15 @@
 /**
  * Sevalla deployment configuration
  */
-module.exports = {
+export default {
   name: 'saas-chatbot-backend',
   type: 'node',
-  entrypoint: 'server/index.js',
+  entrypoint: 'server.js',
   buildCommand: 'npm run build',
+  startCommand: 'node server.js',
   env: {
     NODE_ENV: 'production',
-    PORT: '3002',
+    PORT: '3000',
     // These will be set in the Sevalla dashboard
     // DEFAULT_API_KEY: process.env.DEFAULT_API_KEY,
     // NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
@@ -27,5 +28,9 @@ module.exports = {
     path: '/api/health',
     initialDelaySeconds: 10,
     periodSeconds: 30
-  }
+  },
+  // Specify this is a backend-only deployment
+  isBackendOnly: true,
+  // Configure output directory for Next.js
+  outputDirectory: '.next'
 };

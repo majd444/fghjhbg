@@ -9,11 +9,13 @@
     "start": "next start",
     "lint": "next lint",
     "sevalla-deploy": "node deploy-sevalla.js",
-    "sevalla-build": "next build && next export",
+    "sevalla-build": "next build",
     "db-init": "ts-node scripts/init-db.ts",
     "check-env": "node scripts/check-env.js",
     "predeploy": "npm run check-env && npm run db-init",
-    "github-init": "node scripts/init-github.js"
+    "github-init": "node scripts/init-github.js",
+    "install-deps": "npm install --legacy-peer-deps",
+    "postinstall": "npm run install-deps"
   },
   "dependencies": {
     "@ai-sdk/openai": "latest",
